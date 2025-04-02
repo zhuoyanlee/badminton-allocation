@@ -43,6 +43,9 @@ class _CourtSchedulerScreenState extends State<CourtSchedulerScreen> {
   bool showPlayerNameInputs = false;
   int numGames = 8;
   
+  // Toggle between court view and table view
+  bool showTableView = false;
+  
   // Maximum player limit
   final int maxPlayers = 20;
 
@@ -258,32 +261,201 @@ class _CourtSchedulerScreenState extends State<CourtSchedulerScreen> {
                 ),
               ),
             if (isScheduleGenerated)
-              Expanded(
-                child: DefaultTabController(
-                  length: numGames,
-                  child: Column(
-                    children: [
-                      TabBar(
-                        isScrollable: true,
-                        labelColor: Theme.of(context).primaryColor,
-                        tabs: List.generate(
-                          numGames,
-                          (index) => Tab(text: 'Game ${index + 1}'),
+              Row(
+                children: [
+                  Text(
+                    'View Mode:',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(width: 16),
+                  ToggleButtons(
+                    isSelected: [!showTableView, showTableView],
+                    onPressed: (index) {
+                      setState(() {
+                        showTableView = index == 1;
+                      });
+                    },
+                    borderRadius: BorderRadius.circular(8),
+                    children: const [
+                      Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 16),
+                        child: Row(
+                          children: [
+                            Icon(Icons.view_column),
+                            SizedBox(width: 8),
+                            Text('Court View'),
+                          ],
                         ),
                       ),
-                      Expanded(
-                        child: TabBarView(
-                          children: List.generate(
-                            numGames,
-                            (gameIndex) => _buildGameTab(gameIndex + 1),
-                          ),
+                      Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 16),
+                        child: Row(
+                          children: [
+                            Icon(Icons.grid_on),
+                            SizedBox(width: 8),
+                            Text('Table View'),
+                          ],
                         ),
                       ),
                     ],
                   ),
-                ),
+                ],
+              ),
+            if (isScheduleGenerated)
+              Expanded(
+                child: showTableView 
+                  ? _buildTableView() 
+                  : DefaultTabController(
+                      length: numGames,
+                      child: Column(
+                        children: [
+                          TabBar(
+                            isScrollable: true,
+                            labelColor: Theme.of(context).primaryColor,
+                            tabs: List.generate(
+                              numGames,
+                              (index) => Tab(text: 'Game ${index + 1}'),
+                            ),
+                          ),
+                          Expanded(
+                            child: TabBarView(
+                              children: List.generate(
+                                numGames,
+                                (gameIndex) => _buildGameTab(gameIndex + 1),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
               ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTableView() {
+    // Create a map of player court assignments for each game
+    Map<String, Map<int, dynamic>> playerAssignments = {};
+    
+    // Initialize the player assignments map
+    for (String player in playerNames) {
+      playerAssignments[player] = {};
+      for (int gameNum = 1; gameNum <= numGames; gameNum++) {
+        playerAssignments[player]![gameNum] = '-';
+      }
+    }
+    
+    // Fill in the player assignments based on the schedule
+    for (int gameNum = 1; gameNum <= numGames; gameNum++) {
+      if (schedule.containsKey(gameNum)) {
+        for (int courtIndex = 0; courtIndex < schedule[gameNum]!.length; courtIndex++) {
+          for (String player in schedule[gameNum]![courtIndex]) {
+            playerAssignments[player]![gameNum] = courtIndex + 1;
+          }
+        }
+      }
+    }
+    
+    return Padding(
+      padding: const EdgeInsets.only(top: 16.0),
+      child: Card(
+        child: SingleChildScrollView(
+          scrollDirection: Axis.vertical,
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: DataTable(
+              columns: [
+                const DataColumn(
+                  label: Text(
+                    'Player',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ),
+                ...List.generate(
+                  numGames,
+                  (index) => DataColumn(
+                    label: Text(
+                      'Game ${index + 1}',
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
+              ],
+              rows: playerAssignments.entries.map((entry) {
+                String player = entry.key;
+                Map<int, dynamic> gameCourts = entry.value;
+                bool isRegularPlayer = regularPlayers.contains(player);
+                
+                return DataRow(
+                  color: isRegularPlayer
+                      ? MaterialStateProperty.all(Colors.blue.shade50)
+                      : null,
+                  cells: [
+                    DataCell(
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (isRegularPlayer)
+                            Padding(
+                              padding: const EdgeInsets.only(right: 8.0),
+                              child: Icon(Icons.star, size: 16, color: Colors.blue.shade700),
+                            ),
+                          Text(
+                            player,
+                            style: isRegularPlayer
+                                ? TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.blue.shade700,
+                                  )
+                                : null,
+                          ),
+                        ],
+                      ),
+                    ),
+                    ...List.generate(
+                      numGames,
+                      (gameIndex) {
+                        int gameNum = gameIndex + 1;
+                        var courtValue = gameCourts[gameNum];
+                        Color? cellColor;
+                        
+                        if (courtValue is int) {
+                          // Color based on court number
+                          switch (courtValue) {
+                            case 1:
+                              cellColor = Colors.green.shade100;
+                              break;
+                            case 2:
+                              cellColor = Colors.orange.shade100;
+                              break;
+                            case 3:
+                              cellColor = Colors.purple.shade100;
+                              break;
+                          }
+                        } else {
+                          // Resting player
+                          cellColor = Colors.amber.shade50;
+                        }
+                        
+                        return DataCell(
+                          Container(
+                            alignment: Alignment.center,
+                            color: cellColor,
+                            child: Text(
+                              courtValue.toString(),
+                              style: const TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                );
+              }).toList(),
+            ),
+          ),
         ),
       ),
     );
